@@ -253,7 +253,7 @@ const games = await auth.refreshGames();
 const mutes = await auth.refreshMutes();
 ```
 
-**Note**: Refresh operations use stored encrypted credentials and re-run Puppeteer to extract fresh data from insignia.live.
+**Note**: Refresh operations use stored encrypted credentials to extract fresh data from insignia.live.
 
 ## Example: Complete Integration
 
