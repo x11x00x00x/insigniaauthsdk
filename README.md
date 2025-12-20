@@ -24,7 +24,8 @@ Copy `insignia-auth.js` to your project and include it:
 <script src="path/to/insignia-auth.js"></script>
 ```
 
-<img width="453" height="1134" alt="loggedin" src="https://github.com/user-attachments/assets/50ced4bf-6e66-4088-9d1d-db72422f4356" />
+<img width="453" height="1134" alt="loggedin" src="https://github.com/user-attachments/assets/02153425-0719-4dc3-bffa-19cd19f57441" />
+
 
 ## Quick Start
 
