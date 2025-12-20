@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Insignia Auth SDK Example</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .config-section {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .config-section label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .config-section input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .login-form {
+            display: none;
+        }
+
+        .login-form.active {
+            display: block;
+        }
+
+        .user-info {
+            display: none;
+        }
+
+        .user-info.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        input[type="email"],
+        input[type="password"],
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #5568d3;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .error-message {
+            background: #fee;
+            color: #c33;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        .status-message {
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            display: none;
+            text-align: center;
+        }
+
+        .logout-btn {
+            background: #f44336;
+            margin-top: 20px;
+        }
+
+        .logout-btn:hover {
+            background: #d32f2f;
+        }
+
+        .username {
+            font-size: 24px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .email {
+            font-size: 16px;
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .success-message {
+            background: #e8f5e9;
+            color: #2e7d32;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .data-section {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+
+        .data-section h3 {
+            margin-bottom: 10px;
+            color: #333;
+            font-size: 18px;
+        }
+
+        .data-list {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+
+        .data-item {
+            padding: 8px;
+            background: white;
+            border-radius: 3px;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        .refresh-btn {
+            background: #4caf50;
+            margin-top: 10px;
+            width: auto;
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+
+        .refresh-btn:hover {
+            background: #45a049;
+        }
+
+        .refresh-btn:disabled {
+            background: #ccc;
+        }
+
+        .count-badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-left: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Insignia Auth SDK</h1>
+        <p class="subtitle">Example Integration</p>
+        
+        <div class="config-section">
+            <label for="apiUrl">API Server URL:</label>
+            <input type="text" id="apiUrl" placeholder="https://your-server.com/api" value="https://auth.insigniastats.live/api">
+        </div>
+        
+        <div id="loginForm" class="login-form active">
+            <div id="loginError" class="error-message"></div>
+            <div id="loginStatus" class="status-message">
+                <div id="loginStatusText">Logging in...</div>
+            </div>
+            
+            <form onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                
+                <button type="submit" id="loginSubmitBtn">Login</button>
+            </form>
+        </div>
+        
+        <div id="userInfo" class="user-info">
+            <div class="success-message">✓ Successfully logged in!</div>
+            <div class="username" id="usernameDisplay"></div>
+            <div class="email" id="emailDisplay"></div>
+            <div class="info-box">
+                <strong>Session Key:</strong><br>
+                <code id="sessionKeyDisplay" style="font-size: 12px; word-break: break-all;"></code>
+            </div>
+            
+            <div class="data-section">
+                <h3>Friends <span class="count-badge" id="friendsCount">-</span></h3>
+                <button class="refresh-btn" onclick="refreshFriends()" id="refreshFriendsBtn">Refresh</button>
+                <div class="data-list" id="friendsList">Loading...</div>
+            </div>
+            
+            <div class="data-section">
+                <h3>Games <span class="count-badge" id="gamesCount">-</span></h3>
+                <button class="refresh-btn" onclick="refreshGames()" id="refreshGamesBtn">Refresh</button>
+                <div class="data-list" id="gamesList">Loading...</div>
+            </div>
+            
+            <div class="data-section">
+                <h3>Mutes <span class="count-badge" id="mutesCount">-</span></h3>
+                <button class="refresh-btn" onclick="refreshMutes()" id="refreshMutesBtn">Refresh</button>
+                <div class="data-list" id="mutesList">Loading...</div>
+            </div>
+            
+            <button class="logout-btn" onclick="handleLogout()">Logout</button>
+        </div>
+    </div>
+
+    <script src="insignia-auth.js"></script>
+    <script>
+        let auth = null;
+
+        // Initialize SDK
+        function initAuth() {
+            const apiUrl = document.getElementById('apiUrl').value.trim();
+            if (!apiUrl) {
+                alert('Please enter an API URL');
+                return;
+            }
+
+            auth = new InsigniaAuth({ apiUrl: apiUrl });
+
+            // Listen for events
+            auth.on('login', (user) => {
+                updateUI();
+            });
+
+            auth.on('logout', () => {
+                updateUI();
+            });
+
+            auth.on('error', (error) => {
+                console.error('Auth error:', error);
+            });
+
+            // Start auto-verification
+            auth.startAutoVerify();
+
+            // Check initial state
+            updateUI();
+        }
+
+        // Update UI based on login status
+        async function updateUI() {
+            const loginForm = document.getElementById('loginForm');
+            const userInfo = document.getElementById('userInfo');
+            const usernameDisplay = document.getElementById('usernameDisplay');
+            const emailDisplay = document.getElementById('emailDisplay');
+            const sessionKeyDisplay = document.getElementById('sessionKeyDisplay');
+            
+            if (auth && auth.isLoggedIn()) {
+                loginForm.classList.remove('active');
+                userInfo.classList.add('active');
+                usernameDisplay.textContent = `Welcome, ${auth.getUsername()}!`;
+                emailDisplay.textContent = `Email: ${auth.getEmail() || 'N/A'}`;
+                sessionKeyDisplay.textContent = auth.getSessionKey();
+                
+                // Load and display data
+                await loadAllData();
+            } else {
+                loginForm.classList.add('active');
+                userInfo.classList.remove('active');
+            }
+        }
+
+        // Load all data
+        async function loadAllData() {
+            if (!auth || !auth.isLoggedIn()) return;
+            
+            try {
+                // Load friends
+                const friends = await auth.getFriends();
+                if (friends) {
+                    displayFriends(friends);
+                } else {
+                    document.getElementById('friendsList').textContent = 'No friends data available';
+                }
+                
+                // Load games
+                const games = await auth.getGames();
+                if (games) {
+                    displayGames(games);
+                } else {
+                    document.getElementById('gamesList').textContent = 'No games data available';
+                }
+                
+                // Load mutes
+                const mutes = await auth.getMutes();
+                if (mutes) {
+                    displayMutes(mutes);
+                } else {
+                    document.getElementById('mutesList').textContent = 'No mutes data available';
+                }
+            } catch (err) {
+                console.error('Error loading data:', err);
+            }
+        }
+
+        // Display friends
+        function displayFriends(data) {
+            const list = document.getElementById('friendsList');
+            const count = document.getElementById('friendsCount');
+            
+            count.textContent = data.count || 0;
+            
+            if (data.friends && data.friends.length > 0) {
+                list.innerHTML = data.friends.map(friend => 
+                    `<div class="data-item"><strong>${friend.gamertag}</strong> - ${friend.status}</div>`
+                ).join('');
+            } else {
+                list.textContent = 'No friends found';
+            }
+        }
+
+        // Display games
+        function displayGames(data) {
+            const list = document.getElementById('gamesList');
+            const count = document.getElementById('gamesCount');
+            
+            count.textContent = data.count || 0;
+            
+            if (data.games && data.games.length > 0) {
+                list.innerHTML = data.games.map(game => 
+                    `<div class="data-item"><strong>${game.title}</strong> (${game.serialCode})</div>`
+                ).join('');
+            } else {
+                list.textContent = 'No games found';
+            }
+        }
+
+        // Display mutes
+        function displayMutes(data) {
+            const list = document.getElementById('mutesList');
+            const count = document.getElementById('mutesCount');
+            
+            count.textContent = data.count || 0;
+            
+            if (data.mutes && data.mutes.length > 0) {
+                list.innerHTML = data.mutes.map(mute => 
+                    `<div class="data-item"><strong>${mute.gamertag}</strong> - ${mute.date || 'N/A'}</div>`
+                ).join('');
+            } else {
+                list.textContent = 'No mutes found';
+            }
+        }
+
+        // Refresh friends
+        async function refreshFriends() {
+            if (!auth || !auth.isLoggedIn()) return;
+            
+            const btn = document.getElementById('refreshFriendsBtn');
+            const list = document.getElementById('friendsList');
+            
+            btn.disabled = true;
+            btn.textContent = 'Refreshing...';
+            list.textContent = 'Refreshing data...';
+            
+            try {
+                const data = await auth.refreshFriends();
+                displayFriends(data);
+                btn.textContent = 'Refresh';
+            } catch (err) {
+                list.textContent = `Error: ${err.message}`;
+                btn.textContent = 'Refresh';
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // Refresh games
+        async function refreshGames() {
+            if (!auth || !auth.isLoggedIn()) return;
+            
+            const btn = document.getElementById('refreshGamesBtn');
+            const list = document.getElementById('gamesList');
+            
+            btn.disabled = true;
+            btn.textContent = 'Refreshing...';
+            list.textContent = 'Refreshing data...';
+            
+            try {
+                const data = await auth.refreshGames();
+                displayGames(data);
+                btn.textContent = 'Refresh';
+            } catch (err) {
+                list.textContent = `Error: ${err.message}`;
+                btn.textContent = 'Refresh';
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // Refresh mutes
+        async function refreshMutes() {
+            if (!auth || !auth.isLoggedIn()) return;
+            
+            const btn = document.getElementById('refreshMutesBtn');
+            const list = document.getElementById('mutesList');
+            
+            btn.disabled = true;
+            btn.textContent = 'Refreshing...';
+            list.textContent = 'Refreshing data...';
+            
+            try {
+                const data = await auth.refreshMutes();
+                displayMutes(data);
+                btn.textContent = 'Refresh';
+            } catch (err) {
+                list.textContent = `Error: ${err.message}`;
+                btn.textContent = 'Refresh';
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // Handle login
+        async function handleLogin(event) {
+            event.preventDefault();
+            
+            if (!auth) {
+                initAuth();
+            }
+
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('loginError');
+            const statusDiv = document.getElementById('loginStatus');
+            const statusText = document.getElementById('loginStatusText');
+            const submitBtn = document.getElementById('loginSubmitBtn');
+            
+            if (!email || !password) {
+                errorDiv.textContent = 'Please enter both email and password';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            submitBtn.disabled = true;
+            submitBtn.style.display = 'none';
+            errorDiv.style.display = 'none';
+            statusDiv.style.display = 'flex';
+            statusText.textContent = 'Logging in...';
+            
+            try {
+                await auth.login(email, password);
+                // UI will update via event listener
+            } catch (error) {
+                statusDiv.style.display = 'none';
+                submitBtn.style.display = 'block';
+                submitBtn.disabled = false;
+                errorDiv.textContent = error.message || 'Login failed';
+                errorDiv.style.display = 'block';
+            }
+        }
+
+        // Handle logout
+        async function handleLogout() {
+            if (auth) {
+                await auth.logout();
+                // UI will update via event listener
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            // Allow user to configure API URL before initializing
+            document.getElementById('apiUrl').addEventListener('change', () => {
+                if (auth) {
+                    initAuth();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+
