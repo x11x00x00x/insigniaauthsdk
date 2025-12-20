@@ -8,14 +8,10 @@ Client-side SDK for connecting to the Insignia Login Server. This SDK provides a
 
 ### Browser (CDN)
 
+<img width="659" height="622" alt="loginscreen" src="https://github.com/user-attachments/assets/365f8cf6-c650-49c6-8344-a4a96d4487b1" />
+
 ```html
 <script src="https://your-cdn.com/insignia-auth.js"></script>
-```
-
-### NPM (if published)
-
-```bash
-npm install insignia-auth-sdk
 ```
 
 ### Local
@@ -25,6 +21,8 @@ Copy `insignia-auth.js` to your project and include it:
 ```html
 <script src="path/to/insignia-auth.js"></script>
 ```
+
+<img width="453" height="1134" alt="loggedin" src="https://github.com/user-attachments/assets/50ced4bf-6e66-4088-9d1d-db72422f4356" />
 
 ## Quick Start
 
