@@ -2,6 +2,8 @@
 
 Client-side SDK for connecting to the Insignia Login Server. This SDK provides a simple interface for authentication, session management, and SSO capabilities.
 
+## NOTE THIS IS NOT AN UNOFFICIAL LOGIN MOD NOT CREATED BY THE INSIGNIA TEAM.
+
 **Production Auth Server**: `https://auth.insigniastats.live/api`
 
 ## Installation
