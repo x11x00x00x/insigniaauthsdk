@@ -1,10 +1,35 @@
 # Insignia Auth SDK
 
-Client-side SDK for connecting to the Insignia Login Server. This SDK provides a simple interface for authentication, session management, and SSO capabilities.
+Client-side SDK for the Insignia Auth Backend. Handles login, session storage, and access to **friends**, **games**, and **profile** (online status, current game, time online, and My Games Played list) from insignia.live. Use your session key to read cached data (e.g. poll every minute) or refresh to update the cache.
 
 ## NOTE THIS IS AN UNOFFICIAL LOGIN MOD NOT CREATED BY THE INSIGNIA TEAM.
 
 **Production Auth Server**: `https://auth.insigniastats.live/api`
+
+### Deprecated / no longer available
+
+| Item | Status | Use instead |
+|------|--------|-------------|
+| **Mutes** | No longer available from Insignia. | Use `getProfile()` and `getFriends()` for online presence and last-seen data. |
+| **Separate games page** | Insignia no longer has `/dashboard/games`. | Games list is only from profile **My Games Played**. `getGames()` and `refreshGames()` use profile data. |
+
+### API summary
+
+| Method | Description |
+|--------|-------------|
+| `login(email, password)` | Log in; returns `{ success, user, sessionKey }`. |
+| `logout()` | Log out and clear session. |
+| `verifySession()` | Returns `true` if session is still valid. |
+| `getUser()` | Get current user (username, email). |
+| `getFriends()` | Get cached friends (gamertag, status, isOnline, game?, duration?, lastSeen?). |
+| `getGames()` | Get cached games (from profile “My Games Played”; same data as profile). |
+| `getProfile()` | Get cached profile (isOnline, status, game?, timeOnline?, gamesPlayed with lastPlayed). |
+| `refreshFriends()` | Refresh friends from Insignia. |
+| `refreshGames()` | Refresh games from Insignia. |
+| `refreshProfile()` | Refresh profile from Insignia. |
+| `isLoggedIn()`, `getUsername()`, `getEmail()`, `getSessionKey()` | Session helpers. |
+| `on(event, fn)` / `off(event, fn)` | Events: `login`, `logout`, `error`. |
+| `startAutoVerify(intervalMs)` / `stopAutoVerify()` | Optional periodic session check. |
 
 ## Installation
 
@@ -137,6 +162,78 @@ Get current session key (for use with protected API endpoints).
 const sessionKey = auth.getSessionKey();
 ```
 
+#### `getFriends()`
+
+Get cached friends list (no Insignia login). Data is scraped from the Insignia dashboard **Friends** page (Filament table). Each friend has:
+
+| Field | Description |
+|-------|-------------|
+| `gamertag` | Display name (e.g. "Jackie", "Colskee"). |
+| `status` | Raw status text from the UI. |
+| `isOnline` | `true` = green badge (online), `false` = gray badge (offline). |
+| **When online** | |
+| `game` | Parsed from "Online in [Game] for …" (e.g. "Project Gotham Racing 2"). |
+| `duration` | Parsed from "… for [duration]" (e.g. "14 hours"). |
+| **When offline** | |
+| `lastSeen` | Full "Last seen …" string (e.g. "Last seen 2 months ago"). |
+
+```javascript
+const data = await auth.getFriends();
+// Returns: { friends: [...], lastUpdated, count } or null
+// friends[].gamertag, .status, .isOnline, .game?, .duration?, .lastSeen?
+```
+
+#### `getGames()`
+
+Get cached games list. Games are sourced from the profile page **My Games Played** (Insignia no longer has a separate games page); the list is the same as `getProfile().gamesPlayed` (each item: `title`, `lastPlayed`, `iconUrl`).
+
+```javascript
+const data = await auth.getGames();
+// Returns: { games: [{ title, lastPlayed, iconUrl }, ...], lastUpdated, count } or null
+```
+
+#### `getProfile()`
+
+Get cached profile: your online status, current game (when online), and My Games Played list.
+
+- **isOnline:** `true` or `false`.
+- **status:** `"Online"` or `"Offline"`.
+- **game:** When online, current game title (e.g. `"Xbox Live Dashboard"`); otherwise `null`.
+- **timeOnline:** When online, how long you have been in that game (e.g. `"11 minutes"`); otherwise `null`. You can show "Playing [game] for [timeOnline]" in the UI.
+- **gamesPlayed:** Full list from profile "My Games Played"; each entry has `title`, `lastPlayed` (e.g. `"10 minutes ago"`), `iconUrl`.
+
+```javascript
+const data = await auth.getProfile();
+// Returns: { isOnline, status, game?, timeOnline?, gamesPlayed: [{ title, lastPlayed, iconUrl }], lastUpdated, count } or null
+```
+
+#### `refreshFriends()`
+
+Refresh friends from Insignia (updates cache; backend reuses session when possible).
+
+```javascript
+const data = await auth.refreshFriends();
+// Returns: { friends, lastUpdated, count } or null
+```
+
+#### `refreshGames()`
+
+Refresh games from Insignia. The backend refreshes the profile page (My Games Played) and returns the games list (same as refreshing profile for games).
+
+```javascript
+const data = await auth.refreshGames();
+// Returns: { success, games: [{ title, lastPlayed, iconUrl }, ...], count, lastUpdated } or null
+```
+
+#### `refreshProfile()`
+
+Refresh profile (online status, current game, time online, and My Games Played) from Insignia.
+
+```javascript
+const data = await auth.refreshProfile();
+// Returns: { success?, isOnline, status, game?, timeOnline?, gamesPlayed, lastUpdated, count } or null
+```
+
 #### `on(event, callback)`
 
 Listen to authentication events.
@@ -225,6 +322,25 @@ auth.startAutoVerify();
 
 **Important**: For SSO to work across different domains, you'll need to use a shared storage mechanism or implement cross-domain session sharing. Within the same domain, SSO works automatically via localStorage.
 
+## Backend API Endpoints
+
+The SDK talks to an Insignia Auth Backend. All protected endpoints require the session key via header `X-Session-Key` or query `sessionKey`. Base path is your `apiUrl` (e.g. `https://auth.insigniastats.live/api`).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/auth/login` | Login with email/password; returns `{ success, username, email, sessionKey }`. Backend extracts friends and profile (including My Games Played) in the background after response. |
+| POST | `/auth/logout` | Logout; body `{ sessionKey }`. |
+| POST | `/auth/verify` | Verify session; body `{ sessionKey }`. Returns `{ valid: true }` or 401. |
+| GET | `/auth/user` | Get current user (SSO); returns `{ username, email, sessionKey }`. |
+| GET | `/auth/friends` | Cached friends list; returns `{ friends, lastUpdated, count }`. |
+| GET | `/auth/games` | Cached games list (from profile My Games Played); returns `{ games, lastUpdated, count }`. Same data as profile.gamesPlayed. |
+| GET | `/auth/profile` | Cached profile; returns `{ isOnline, status, game, timeOnline, gamesPlayed, lastUpdated, count }`. |
+| POST | `/auth/refresh/friends` | Refresh friends from Insignia; returns `{ success, friends, count, lastUpdated }`. |
+| POST | `/auth/refresh/games` | Refresh profile and return games; returns `{ success, games, count, lastUpdated }`. |
+| POST | `/auth/refresh/profile` | Refresh profile from Insignia; returns `{ success, isOnline, status, game, timeOnline, gamesPlayed, count, lastUpdated }`. |
+
+**After login:** Friends and profile (including games) are extracted in the background. Allow 20–40 seconds before cached data is full, or call a refresh endpoint.
+
 ## Using Session Key with Protected Endpoints
 
 When making API calls to your own backend, include the session key:
@@ -239,22 +355,24 @@ const response = await fetch('https://your-api.com/protected-endpoint', {
 });
 ```
 
-## Data Refresh
+## Data: Cached (GET) vs Refresh (POST)
 
-The SDK supports refreshing data without requiring a new login. When you log in, your credentials are securely stored (encrypted) on the server. You can refresh any data type:
+- **Cached (no Insignia login):** `getFriends()`, `getGames()`, and `getProfile()` read from the server’s cache. Use these for frequent polling (e.g. every minute).
+- **Refresh (updates cache):** `refreshFriends()`, `refreshGames()`, and `refreshProfile()` fetch fresh data from insignia.live. The backend reuses the Insignia session when possible, so refresh does not always require a full login. Note: `refreshGames()` refreshes the profile page and returns the games list (same source as `getProfile().gamesPlayed`).
 
 ```javascript
-// Refresh friends data
-const friends = await auth.refreshFriends();
+// Read cached data (fast, no login)
+const friends = await auth.getFriends();
+const profile = await auth.getProfile();
+const games = await auth.getGames();
 
-// Refresh games data
-const games = await auth.refreshGames();
-
-// Refresh mutes data
-const mutes = await auth.refreshMutes();
+// Update the cache from Insignia (call less often, e.g. every 5–10 min)
+await auth.refreshFriends();
+await auth.refreshProfile();
+await auth.refreshGames();
 ```
 
-**Note**: Refresh operations use stored encrypted credentials to extract fresh data from insignia.live.
+**Polling:** For live presence (who’s online, what game, last seen), poll `getFriends()` and `getProfile()` on a timer (e.g. every minute). Call `refreshFriends()` / `refreshProfile()` periodically or on user action to keep the cache up to date.
 
 ## Example: Complete Integration
 

@@ -1,10 +1,19 @@
 /**
  * Insignia Auth SDK
- * Client-side SDK for connecting to Insignia Login Server
- * 
- * Usage:
+ * Client-side SDK for the Insignia Auth Backend (session, friends, games, profile).
+ *
+ * Endpoints used:
+ *   POST /auth/login, POST /auth/logout, POST /auth/verify
+ *   GET  /auth/user, GET /auth/friends, GET /auth/games, GET /auth/profile
+ *   POST /auth/refresh/friends, POST /auth/refresh/games, POST /auth/refresh/profile
+ *
+ * Deprecated (no longer available): mutes — use profile and friends for presence instead.
+ *
+ * @example
  *   const auth = new InsigniaAuth({ apiUrl: 'https://your-server.com/api' });
  *   await auth.login(email, password);
+ *   const friends = await auth.getFriends();
+ *   const profile = await auth.getProfile();
  */
 
 class InsigniaAuth {
@@ -155,9 +164,9 @@ class InsigniaAuth {
                 body: JSON.stringify({ sessionKey: this.sessionKey })
             });
 
-            const data = await response.json();
+            const data = await response.json().catch(() => null);
 
-            if (data.valid) {
+            if (data && data.valid) {
                 // Update user data if email was missing
                 if (data.email && (!this.user || !this.user.email)) {
                     this.user = {
@@ -168,13 +177,15 @@ class InsigniaAuth {
                     this.saveSession(this.sessionKey, this.user);
                 }
                 return true;
-            } else {
-                this.clearSession();
-                return false;
             }
+            // Only clear session when server explicitly said invalid (e.g. 401 + JSON)
+            if (response.status === 401 && data && typeof data.valid === 'boolean') {
+                this.clearSession();
+            }
+            return false;
         } catch (err) {
             console.error('Error verifying session:', err);
-            this.clearSession();
+            // Don't clear session on network/parse errors (could be wrong URL or old server)
             return false;
         }
     }
@@ -224,8 +235,9 @@ class InsigniaAuth {
     }
 
     /**
-     * Get user's friends list
-     * @returns {Promise<Object|null>} Friends data or null if not logged in
+     * Get user's friends list (cached). Use refreshFriends() to update from Insignia.
+     * Each friend has: gamertag, status, isOnline, game (if online), duration (if online), lastSeen (if offline).
+     * @returns {Promise<{ friends: Array<{gamertag, status, isOnline, game?, duration?, lastSeen?}>, lastUpdated: number|null, count: number }|null>}
      */
     async getFriends() {
         if (!this.sessionKey) {
@@ -308,22 +320,22 @@ class InsigniaAuth {
     }
 
     /**
-     * Get user's mutes list
-     * @returns {Promise<Object|null>} Mutes data or null if not logged in
+     * Get current user's profile (cached): online status and last games played.
+     * Use refreshProfile() to update from Insignia.
+     * @returns {Promise<{ isOnline: boolean, gamesPlayed: Array<{title, lastPlayed, iconUrl}>, lastUpdated: number|null, count: number }|null>}
      */
-    async getMutes() {
+    async getProfile() {
         if (!this.sessionKey) {
             return null;
         }
 
-        // Verify session first
         const isValid = await this.verifySession();
         if (!isValid) {
             return null;
         }
 
         try {
-            const response = await fetch(`${this.apiUrl}/auth/mutes`, {
+            const response = await fetch(`${this.apiUrl}/auth/profile`, {
                 method: 'GET',
                 headers: {
                     'X-Session-Key': this.sessionKey
@@ -339,19 +351,23 @@ class InsigniaAuth {
 
             const data = await response.json();
             return {
-                mutes: data.mutes || [],
+                isOnline: data.isOnline || false,
+                status: data.status ?? (data.isOnline ? 'Online' : 'Offline'),
+                game: data.game ?? null,
+                timeOnline: data.timeOnline ?? null,
+                gamesPlayed: data.gamesPlayed || [],
                 lastUpdated: data.lastUpdated || null,
                 count: data.count || 0
             };
         } catch (err) {
-            console.error('Error getting mutes:', err);
+            console.error('Error getting profile:', err);
             return null;
         }
     }
 
     /**
-     * Refresh friends data
-     * @returns {Promise<Object|null>} Updated friends data or null if not logged in
+     * Refresh friends data from Insignia (reuses session when possible).
+     * @returns {Promise<{ friends, lastUpdated, count }|null>} Updated friends or null if not logged in
      */
     async refreshFriends() {
         if (!this.sessionKey) {
@@ -436,22 +452,21 @@ class InsigniaAuth {
     }
 
     /**
-     * Refresh mutes data
-     * @returns {Promise<Object|null>} Updated mutes data or null if not logged in
+     * Refresh profile from Insignia (reuses session when possible).
+     * @returns {Promise<{ isOnline, gamesPlayed, lastUpdated, count }|null>} Updated profile or null if not logged in
      */
-    async refreshMutes() {
+    async refreshProfile() {
         if (!this.sessionKey) {
             return null;
         }
 
-        // Verify session first
         const isValid = await this.verifySession();
         if (!isValid) {
             return null;
         }
 
         try {
-            const response = await fetch(`${this.apiUrl}/auth/refresh/mutes`, {
+            const response = await fetch(`${this.apiUrl}/auth/refresh/profile`, {
                 method: 'POST',
                 headers: {
                     'X-Session-Key': this.sessionKey
@@ -463,17 +478,21 @@ class InsigniaAuth {
                     this.clearSession();
                 }
                 const error = await response.json();
-                throw new Error(error.error || 'Failed to refresh mutes');
+                throw new Error(error.error || 'Failed to refresh profile');
             }
 
             const data = await response.json();
             return {
-                mutes: data.mutes || [],
+                isOnline: data.isOnline || false,
+                status: data.status ?? (data.isOnline ? 'Online' : 'Offline'),
+                game: data.game ?? null,
+                timeOnline: data.timeOnline ?? null,
+                gamesPlayed: data.gamesPlayed || [],
                 lastUpdated: data.lastUpdated || null,
                 count: data.count || 0
             };
         } catch (err) {
-            console.error('Error refreshing mutes:', err);
+            console.error('Error refreshing profile:', err);
             throw err;
         }
     }

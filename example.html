@@ -140,6 +140,20 @@
             display: none;
         }
 
+        .server-hint {
+            background: #fff8e6;
+            color: #7d5a00;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-size: 13px;
+        }
+
+        .server-hint a {
+            color: #b38600;
+            text-decoration: underline;
+        }
+
         .status-message {
             background: #e3f2fd;
             color: #1976d2;
@@ -242,6 +256,55 @@
             font-size: 12px;
             margin-left: 8px;
         }
+
+        .profile-status {
+            font-size: 15px;
+            padding: 6px 0;
+        }
+        .profile-status.online {
+            color: #2e7d32;
+            font-weight: 600;
+        }
+        .profile-status.offline {
+            color: #666;
+        }
+        .profile-playing {
+            font-size: 14px;
+            color: #2e7d32;
+            margin-top: 6px;
+        }
+        .data-item.online {
+            border-left: 3px solid #4caf50;
+        }
+        .data-item.offline {
+            border-left: 3px solid #9e9e9e;
+        }
+        .data-item .friend-status,
+        .data-item .friend-status-line {
+            font-size: 12px;
+            color: #666;
+            margin-top: 2px;
+        }
+        .data-item .game-last-played-wrap {
+            font-size: 12px;
+            color: #666;
+            margin-top: 2px;
+        }
+        .data-item.game-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .data-item.game-row .game-icon {
+            width: 32px;
+            height: 32px;
+            object-fit: contain;
+            flex-shrink: 0;
+            border-radius: 4px;
+        }
+        .data-item.game-row .game-text {
+            min-width: 0;
+        }
     </style>
 </head>
 <body>
@@ -277,11 +340,19 @@
         
         <div id="userInfo" class="user-info">
             <div class="success-message">✓ Successfully logged in!</div>
+            <div id="serverHint" class="server-hint" style="display: none;"></div>
             <div class="username" id="usernameDisplay"></div>
             <div class="email" id="emailDisplay"></div>
             <div class="info-box">
                 <strong>Session Key:</strong><br>
                 <code id="sessionKeyDisplay" style="font-size: 12px; word-break: break-all;"></code>
+            </div>
+            
+            <div class="data-section profile-section">
+                <h3>My profile</h3>
+                <div id="profileStatus" class="profile-status">—</div>
+                <div id="profilePlaying" class="profile-playing" style="display: none;"></div>
+                <button class="refresh-btn" onclick="refreshProfile()" id="refreshProfileBtn">Refresh profile</button>
             </div>
             
             <div class="data-section">
@@ -290,16 +361,10 @@
                 <div class="data-list" id="friendsList">Loading...</div>
             </div>
             
-            <div class="data-section">
-                <h3>Games <span class="count-badge" id="gamesCount">-</span></h3>
-                <button class="refresh-btn" onclick="refreshGames()" id="refreshGamesBtn">Refresh</button>
+            <div class="data-section games-section">
+                <h3>My Games Played <span class="count-badge" id="gamesCount">-</span></h3>
+                <button class="refresh-btn" onclick="refreshGames()" id="refreshGamesBtn">Refresh games</button>
                 <div class="data-list" id="gamesList">Loading...</div>
-            </div>
-            
-            <div class="data-section">
-                <h3>Mutes <span class="count-badge" id="mutesCount">-</span></h3>
-                <button class="refresh-btn" onclick="refreshMutes()" id="refreshMutesBtn">Refresh</button>
-                <div class="data-list" id="mutesList">Loading...</div>
             </div>
             
             <button class="logout-btn" onclick="handleLogout()">Logout</button>
@@ -320,9 +385,9 @@
 
             auth = new InsigniaAuth({ apiUrl: apiUrl });
 
-            // Listen for events
+            // Listen for events (waitForData = true so we wait for backend extraction after login)
             auth.on('login', (user) => {
-                updateUI();
+                updateUI({ waitForData: true });
             });
 
             auth.on('logout', () => {
@@ -340,8 +405,8 @@
             updateUI();
         }
 
-        // Update UI based on login status
-        async function updateUI() {
+        // Update UI based on login status. opts.waitForData = true after login so we wait for backend extraction.
+        async function updateUI(opts) {
             const loginForm = document.getElementById('loginForm');
             const userInfo = document.getElementById('userInfo');
             const usernameDisplay = document.getElementById('usernameDisplay');
@@ -355,92 +420,190 @@
                 emailDisplay.textContent = `Email: ${auth.getEmail() || 'N/A'}`;
                 sessionKeyDisplay.textContent = auth.getSessionKey();
                 
-                // Load and display data
-                await loadAllData();
+                if (opts && opts.waitForData) {
+                    await loadAllDataAfterLogin();
+                } else {
+                    await loadAllData();
+                }
             } else {
                 loginForm.classList.add('active');
                 userInfo.classList.remove('active');
             }
         }
 
-        // Load all data
-        async function loadAllData() {
+        // After login: backend extracts data in the background. Wait then load, retry if still empty.
+        const EXTRACTION_WAIT_MS = 20000;  // friends + games + profile can take 15–20s
+        const RETRY_WAIT_MS = 12000;
+
+        async function loadAllDataAfterLogin() {
             if (!auth || !auth.isLoggedIn()) return;
-            
-            try {
-                // Load friends
-                const friends = await auth.getFriends();
-                if (friends) {
-                    displayFriends(friends);
-                } else {
-                    document.getElementById('friendsList').textContent = 'No friends data available';
-                }
-                
-                // Load games
-                const games = await auth.getGames();
-                if (games) {
-                    displayGames(games);
-                } else {
-                    document.getElementById('gamesList').textContent = 'No games data available';
-                }
-                
-                // Load mutes
-                const mutes = await auth.getMutes();
-                if (mutes) {
-                    displayMutes(mutes);
-                } else {
-                    document.getElementById('mutesList').textContent = 'No mutes data available';
-                }
-            } catch (err) {
-                console.error('Error loading data:', err);
+            const friendsList = document.getElementById('friendsList');
+            const gamesList = document.getElementById('gamesList');
+            const hintEl = document.getElementById('serverHint');
+            hintEl.style.display = 'none';
+
+            const setLoading = (msg) => {
+                friendsList.textContent = msg;
+                gamesList.textContent = msg;
+            };
+
+            setLoading('Loading your data… (may take up to 20 seconds)');
+            await new Promise(r => setTimeout(r, EXTRACTION_WAIT_MS));
+
+            let profile = await auth.getProfile();
+            let friends = await auth.getFriends();
+            let games = await auth.getGames();
+
+            const hasAny = (profile && (profile.gamesPlayed?.length || profile.isOnline !== undefined)) || (friends && (friends.friends?.length || friends.count > 0)) || (games && (games.games?.length || games.count > 0));
+            if (!hasAny) {
+                setLoading('Still loading… retrying in 12 seconds.');
+                await new Promise(r => setTimeout(r, RETRY_WAIT_MS));
+                profile = await auth.getProfile();
+                friends = await auth.getFriends();
+                games = await auth.getGames();
+            }
+
+            paintData(profile, friends, games, hintEl);
+        }
+
+        function paintData(profile, friends, games, hintEl) {
+            hintEl = hintEl || document.getElementById('serverHint');
+            hintEl.style.display = 'none';
+            hintEl.textContent = '';
+
+            if (profile) {
+                displayProfile(profile);
+            } else {
+                document.getElementById('profileStatus').textContent = 'Unknown';
+                document.getElementById('profilePlaying').style.display = 'none';
+            }
+            if (friends) {
+                displayFriends(friends);
+            } else {
+                document.getElementById('friendsList').textContent = 'No friends data available';
+            }
+            // Games: use GET /games response, or fall back to profile.gamesPlayed (same source)
+            const gamesToShow = games && (games.games?.length || games.count > 0)
+                ? games
+                : { games: profile?.gamesPlayed || [], count: (profile?.gamesPlayed || []).length };
+            displayGames(gamesToShow);
+            if (!profile && !friends && !games) {
+                hintEl.innerHTML = 'No data loaded. The server may still be extracting. Click Refresh profile / Refresh to try again, or check the API URL and backend.';
+                hintEl.style.display = 'block';
             }
         }
 
-        // Display friends
+        // Load all data (no wait – use when already logged in or after refresh)
+        async function loadAllData() {
+            if (!auth || !auth.isLoggedIn()) return;
+            const hintEl = document.getElementById('serverHint');
+            hintEl.style.display = 'none';
+            hintEl.textContent = '';
+            try {
+                const profile = await auth.getProfile();
+                const friends = await auth.getFriends();
+                const games = await auth.getGames();
+                paintData(profile, friends, games, hintEl);
+            } catch (err) {
+                console.error('Error loading data:', err);
+                document.getElementById('gamesList').textContent = 'Error: ' + (err.message || 'Failed to load');
+            }
+        }
+
+        // Display profile (status + playing game + time online only; games list is at bottom)
+        function displayProfile(data) {
+            const statusEl = document.getElementById('profileStatus');
+            const playingEl = document.getElementById('profilePlaying');
+
+            statusEl.className = 'profile-status ' + (data.isOnline ? 'online' : 'offline');
+            const statusLabel = (data.status || (data.isOnline ? 'Online' : 'Offline')).trim();
+            statusEl.textContent = data.isOnline ? '🟢 ' + statusLabel : '⚫ ' + statusLabel;
+
+            if (data.isOnline && (data.game || data.timeOnline)) {
+                playingEl.style.display = '';
+                const parts = [];
+                if (data.game) parts.push('Playing ' + escapeHtml(data.game));
+                if (data.timeOnline) parts.push('for ' + escapeHtml(data.timeOnline));
+                playingEl.textContent = parts.join(' ');
+            } else {
+                playingEl.style.display = 'none';
+                playingEl.textContent = '';
+            }
+        }
+
+        // Display friends: always show Online/Offline and either game or last seen
         function displayFriends(data) {
             const list = document.getElementById('friendsList');
             const count = document.getElementById('friendsCount');
-            
             count.textContent = data.count || 0;
-            
             if (data.friends && data.friends.length > 0) {
-                list.innerHTML = data.friends.map(friend => 
-                    `<div class="data-item"><strong>${friend.gamertag}</strong> - ${friend.status}</div>`
-                ).join('');
+                list.innerHTML = data.friends.map(friend => {
+                    const cls = friend.isOnline ? 'online' : 'offline';
+                    let line2 = '';
+                    if (friend.isOnline) {
+                        line2 = friend.game
+                            ? 'Playing ' + escapeHtml(friend.game) + (friend.duration ? ' for ' + escapeHtml(friend.duration) : '')
+                            : (friend.status || 'Online');
+                    } else {
+                        line2 = (friend.lastSeen || friend.status || '').trim();
+                        if (line2 && !/^last seen/i.test(line2)) line2 = 'Last seen: ' + line2;
+                        if (!line2) line2 = 'Offline';
+                    }
+                    const statusLabel = friend.isOnline ? '🟢 Online' : '⚫ Offline';
+                    return '<div class="data-item friend-row ' + cls + '"><strong>' + escapeHtml(friend.gamertag) + '</strong><div class="friend-status-line">' + escapeHtml(statusLabel) + (line2 ? ' — ' + line2 : '') + '</div></div>';
+                }).join('');
             } else {
                 list.textContent = 'No friends found';
             }
         }
 
-        // Display games
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Display games (from profile My Games Played: title, lastPlayed, iconUrl)
         function displayGames(data) {
             const list = document.getElementById('gamesList');
             const count = document.getElementById('gamesCount');
-            
-            count.textContent = data.count || 0;
-            
+            count.textContent = data.count ?? (data.games ? data.games.length : 0);
             if (data.games && data.games.length > 0) {
-                list.innerHTML = data.games.map(game => 
-                    `<div class="data-item"><strong>${game.title}</strong> (${game.serialCode})</div>`
-                ).join('');
+                list.innerHTML = data.games.map(game => {
+                    const title = escapeHtml((game.title || '').trim());
+                    const lastPlayed = (game.lastPlayed || '').trim();
+                    const lastPlayedHtml = lastPlayed
+                        ? '<div class="game-last-played-wrap">Last played: ' + escapeHtml(lastPlayed) + '</div>'
+                        : '';
+                    const iconUrl = (game.iconUrl || game.imageUrl || '').trim();
+                    const iconHtml = iconUrl
+                        ? '<img class="game-icon" src="' + escapeHtml(iconUrl) + '" alt="">'
+                        : '';
+                    return '<div class="data-item game-row">' + iconHtml + '<div class="game-text"><strong>' + title + '</strong>' + lastPlayedHtml + '</div></div>';
+                }).join('');
             } else {
-                list.textContent = 'No games found';
+                list.textContent = 'No games played yet';
             }
         }
 
-        // Display mutes
-        function displayMutes(data) {
-            const list = document.getElementById('mutesList');
-            const count = document.getElementById('mutesCount');
-            
-            count.textContent = data.count || 0;
-            
-            if (data.mutes && data.mutes.length > 0) {
-                list.innerHTML = data.mutes.map(mute => 
-                    `<div class="data-item"><strong>${mute.gamertag}</strong> - ${mute.date || 'N/A'}</div>`
-                ).join('');
-            } else {
-                list.textContent = 'No mutes found';
+        // Refresh profile (also updates My Games Played at bottom)
+        async function refreshProfile() {
+            if (!auth || !auth.isLoggedIn()) return;
+            const btn = document.getElementById('refreshProfileBtn');
+            btn.disabled = true;
+            btn.textContent = 'Refreshing...';
+            try {
+                const data = await auth.refreshProfile();
+                if (data) {
+                    displayProfile(data);
+                    displayGames({ games: data.gamesPlayed || [], count: (data.gamesPlayed || []).length });
+                }
+                btn.textContent = 'Refresh profile';
+            } catch (err) {
+                btn.textContent = 'Refresh profile';
+            } finally {
+                btn.disabled = false;
             }
         }
 
@@ -457,7 +620,8 @@
             
             try {
                 const data = await auth.refreshFriends();
-                displayFriends(data);
+                if (data) displayFriends(data);
+                else list.textContent = 'No data';
                 btn.textContent = 'Refresh';
             } catch (err) {
                 list.textContent = `Error: ${err.message}`;
@@ -467,7 +631,7 @@
             }
         }
 
-        // Refresh games
+        // Refresh games (backend refreshes profile and returns games list)
         async function refreshGames() {
             if (!auth || !auth.isLoggedIn()) return;
             
@@ -476,38 +640,21 @@
             
             btn.disabled = true;
             btn.textContent = 'Refreshing...';
-            list.textContent = 'Refreshing data...';
+            list.textContent = 'Refreshing...';
             
             try {
                 const data = await auth.refreshGames();
-                displayGames(data);
-                btn.textContent = 'Refresh';
+                if (data) {
+                    displayGames(data);
+                    const profile = await auth.getProfile();
+                    if (profile) displayProfile(profile);
+                } else {
+                    list.textContent = 'No data';
+                }
+                btn.textContent = 'Refresh games';
             } catch (err) {
                 list.textContent = `Error: ${err.message}`;
-                btn.textContent = 'Refresh';
-            } finally {
-                btn.disabled = false;
-            }
-        }
-
-        // Refresh mutes
-        async function refreshMutes() {
-            if (!auth || !auth.isLoggedIn()) return;
-            
-            const btn = document.getElementById('refreshMutesBtn');
-            const list = document.getElementById('mutesList');
-            
-            btn.disabled = true;
-            btn.textContent = 'Refreshing...';
-            list.textContent = 'Refreshing data...';
-            
-            try {
-                const data = await auth.refreshMutes();
-                displayMutes(data);
-                btn.textContent = 'Refresh';
-            } catch (err) {
-                list.textContent = `Error: ${err.message}`;
-                btn.textContent = 'Refresh';
+                btn.textContent = 'Refresh games';
             } finally {
                 btn.disabled = false;
             }
@@ -560,13 +707,11 @@
             }
         }
 
-        // Initialize on page load
+        // Initialize on page load (restore session if present)
         document.addEventListener('DOMContentLoaded', () => {
-            // Allow user to configure API URL before initializing
+            initAuth();
             document.getElementById('apiUrl').addEventListener('change', () => {
-                if (auth) {
-                    initAuth();
-                }
+                if (auth) initAuth();
             });
         });
     </script>
