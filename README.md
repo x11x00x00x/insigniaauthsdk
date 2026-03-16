@@ -1,10 +1,22 @@
 # Insignia Auth SDK
 
-Client-side SDK for the Insignia Auth Backend. Handles login, session storage, and access to **friends**, **games**, and **profile** (online status, current game, time online, and My Games Played list) from insignia.live. Use your session key to read cached data (e.g. poll every minute) or refresh to update the cache.
+Client-side SDK for the Insignia Auth Backend. Handles login, session storage, and access to **friends**, **games**, **profile**, and **messages** from insignia.live. You can also change your **Halo 2 nameplate** and **PSO server** from the SDK. Use your session key to read cached data (e.g. poll every minute) or refresh to update the cache.
 
 ## NOTE THIS IS AN UNOFFICIAL LOGIN MOD NOT CREATED BY THE INSIGNIA TEAM.
 
 **Production Auth Server**: `https://auth.insigniastats.live/api`
+
+### Features
+
+| Feature | Description |
+|--------|--------------|
+| **Login & session** | Log in with email/password; session stored in localStorage; verify and auto-verify. |
+| **Friends** | Cached friends list (gamertag, online/offline, current game, last seen). Refresh to update. |
+| **Games** | Cached games from profile “My Games Played” (title, last played, icon). |
+| **Profile** | Online status, current game, time online, PSO server, Halo 2 nameplate, games played. |
+| **Messages** | Inbox: list (from, type, game, sent at). **View** a message for full details (subject, sender, sent at, message text). **Delete** messages (e.g. Game Invite). Details are cached server-side after first view. |
+| **Halo 2 nameplate** | Set nameplate to `no_nameplate` or `bungienet` via `setProfileNameplate()`. |
+| **PSO server** | Set PSO server to Schthack (`1`), Sylverant (`2`), or Ragol.org (`4`) via `setProfilePsoServer()`. |
 
 ### Deprecated / no longer available
 
@@ -23,10 +35,17 @@ Client-side SDK for the Insignia Auth Backend. Handles login, session storage, a
 | `getUser()` | Get current user (username, email). |
 | `getFriends()` | Get cached friends (gamertag, status, isOnline, game?, duration?, lastSeen?). |
 | `getGames()` | Get cached games (from profile “My Games Played”; same data as profile). |
-| `getProfile()` | Get cached profile (isOnline, status, game?, timeOnline?, gamesPlayed with lastPlayed). |
+| `getProfile()` | Get cached profile (isOnline, status, game?, timeOnline?, psoServer?, gamesPlayed with lastPlayed). |
+| `getMessages()` | Get cached messages (from, type e.g. Friend Request, game, sentAt; more types may be added). |
+| `viewMessage(messageId, options?)` | Open a message’s View panel; returns subject, sender, sentAt, messageText, type. Details are cached server-side; pass `{ refresh: true }` to force a fresh fetch. |
+| `deleteMessage(messageId)` | Delete a message (e.g. Game Invite, Voice Message). Backend clicks Delete and confirms the modal. |
+| `clearMessageCache()` | Clear all cached messages and message details for the current user. Call `refreshMessages()` afterward to load fresh data. |
 | `refreshFriends()` | Refresh friends from Insignia. |
 | `refreshGames()` | Refresh games from Insignia. |
 | `refreshProfile()` | Refresh profile from Insignia. |
+| `refreshMessages()` | Refresh messages from Insignia. |
+| `setProfileNameplate(nameplate)` | Set Halo 2 nameplate: `'no_nameplate'` or `'bungienet'`. |
+| `setProfilePsoServer(serverId)` | Set PSO Server: `'1'` (Schthack), `'2'` (Sylverant), `'4'` (Ragol.org). |
 | `isLoggedIn()`, `getUsername()`, `getEmail()`, `getSessionKey()` | Session helpers. |
 | `on(event, fn)` / `off(event, fn)` | Events: `login`, `logout`, `error`. |
 | `startAutoVerify(intervalMs)` / `stopAutoVerify()` | Optional periodic session check. |
@@ -49,8 +68,7 @@ Copy `insignia-auth.js` to your project and include it:
 <script src="path/to/insignia-auth.js"></script>
 ```
 
-<img width="507" height="1231" alt="Screenshot 2026-02-22 at 10 53 54 AM" src="https://github.com/user-attachments/assets/054de91c-def3-485d-8206-eebdfa90960f" />
-
+<img width="453" height="1134" alt="loggedin" src="https://github.com/user-attachments/assets/02153425-0719-4dc3-bffa-19cd19f57441" />
 
 
 ## Quick Start
@@ -201,11 +219,53 @@ Get cached profile: your online status, current game (when online), and My Games
 - **status:** `"Online"` or `"Offline"`.
 - **game:** When online, current game title (e.g. `"Xbox Live Dashboard"`); otherwise `null`.
 - **timeOnline:** When online, how long you have been in that game (e.g. `"11 minutes"`); otherwise `null`. You can show "Playing [game] for [timeOnline]" in the UI.
+- **psoServer:** PSO Server value from profile (e.g. "Schthack", or `null` if not set).
+- **nameplate:** Halo 2 nameplate (`'no_nameplate'` or `'bungienet'`), or `null` if not set.
 - **gamesPlayed:** Full list from profile "My Games Played"; each entry has `title`, `lastPlayed` (e.g. `"10 minutes ago"`), `iconUrl`.
 
 ```javascript
 const data = await auth.getProfile();
-// Returns: { isOnline, status, game?, timeOnline?, gamesPlayed: [{ title, lastPlayed, iconUrl }], lastUpdated, count } or null
+// Returns: { isOnline, status, game?, timeOnline?, psoServer?, nameplate?, gamesPlayed: [{ title, lastPlayed, iconUrl }], lastUpdated, count } or null
+```
+
+#### `getMessages()`
+
+Get cached messages from the Insignia **Messages** page (dashboard/messages). Each message has: **from** (sender gamertag), **type** (e.g. `"Friend Request"`, `"Game Invite"`, or `"Unknown"`), **game** (e.g. `"Halo 2"`), **sentAt** (e.g. `"51 seconds ago"`), and optionally **id** (row id for actions). Message types: Friend Request (View), Game Invite (View + Delete), Voice Message (list shows as **Unknown**; View + Delete; `viewMessage` returns `type: "Voice Message"`), Text Message (list shows as **Unknown**; has Message Text in detail; `viewMessage` returns `type: "Text Message"` and `messageText`). More types may be added later.
+
+```javascript
+const data = await auth.getMessages();
+// Returns: { messages: [{ id?, from, type, game?, sentAt? }, ...], lastUpdated, count } or null
+```
+
+#### `viewMessage(messageId, options?)`
+
+Get full details for a message by opening its **View** panel (same as clicking "View" on the dashboard). The backend **caches** message details after the first fetch: later requests return cached data without opening the modal. If the message was deleted, the cache entry is removed and the request returns an error. Cached details are cleared when the message is deleted via `deleteMessage()`.
+
+**Options (optional):** `{ refresh: true }` or `{ skipCache: true }` — bypass cache and force a fresh fetch from Insignia (useful if details were empty or stale).
+
+| Field | Description |
+|-------|-------------|
+| `subject` | Subject line (e.g. "donuts has sent you " or "No Subject"). |
+| `sender` | Sender gamertag (e.g. "donuts"). |
+| `sentAt` | Sent timestamp (e.g. "Mar 3, 2026 17:42:25"). |
+| `messageText` | Message body when present (e.g. Friend Request text, or Text Message body like "'This message brought to you by donuts."). For some types (e.g. Game Invite) the View modal only has General Information, so `messageText` is `null`. For Voice Message, content is a voice indicator (no text). |
+| `hasVoiceMessage` | `true` when the message detail contains a voice message (Message Content has “Contains a voice message” / speaker icon). List type for these is often `"Unknown"`. |
+| `type` | Resolved from detail: `"Voice Message"` when the modal has a voice message (speaker icon); `"Text Message"` when list type is Unknown and Message Content has text; otherwise `null`. Use this to treat list `"Unknown"` as Voice Message or Text Message. |
+
+```javascript
+const detail = await auth.viewMessage('1');
+// With cache bypass: await auth.viewMessage('1', { refresh: true });
+// Returns: { success, id, title?, subject?, sender?, sentAt?, messageText?, hasVoiceMessage?, type?, raw? } or null; throws if message not found or not logged in
+// When list type is "Unknown", use detail.type: "Voice Message" or "Text Message" (or detail.hasVoiceMessage for voice).
+```
+
+#### `deleteMessage(messageId)`
+
+Delete a message from the dashboard. Available for message types that show a **Delete** action (e.g. **Game Invite**, **Voice Message**). The backend clicks Delete and confirms any confirmation modal.
+
+```javascript
+await auth.deleteMessage('1');
+// Returns: { success: true, message: 'Message deleted' } or null; throws if message not found or not logged in
 ```
 
 #### `refreshFriends()`
@@ -233,6 +293,43 @@ Refresh profile (online status, current game, time online, and My Games Played) 
 ```javascript
 const data = await auth.refreshProfile();
 // Returns: { success?, isOnline, status, game?, timeOnline?, gamesPlayed, lastUpdated, count } or null
+```
+
+#### `refreshMessages()`
+
+Refresh messages from Insignia (updates cache; backend reuses session when possible).
+
+```javascript
+const data = await auth.refreshMessages();
+// Returns: { messages, lastUpdated, count } or null
+```
+
+#### `clearMessageCache()`
+
+Clear all cached messages and message details for the current user on the server. After calling this, use `refreshMessages()` to load messages fresh from Insignia. Useful if the list or details are stale or you want to force a full reload.
+
+```javascript
+await auth.clearMessageCache();
+await auth.refreshMessages();
+// Returns: { success: true, message: '...' } or throws
+```
+
+#### `setProfileNameplate(nameplate)`
+
+Set the **Halo 2 nameplate** on your Insignia profile. Options: `'no_nameplate'` or `'bungienet'`. Changes apply after your next Insignia login (or log out and back in if already in-game).
+
+```javascript
+const result = await auth.setProfileNameplate('bungienet');
+// Returns: { success: true, nameplate: 'bungienet' } or throws
+```
+
+#### `setProfilePsoServer(serverId)`
+
+Set the **PSO server** on your Insignia profile. The backend opens the "Set PSO Server" modal, selects the server, and submits. Options: `'1'` (Schthack), `'2'` (Sylverant), `'4'` (Ragol.org).
+
+```javascript
+const result = await auth.setProfilePsoServer('1');
+// Returns: { success: true, serverId: '1' } or throws
 ```
 
 #### `on(event, callback)`
@@ -335,12 +432,19 @@ The SDK talks to an Insignia Auth Backend. All protected endpoints require the s
 | GET | `/auth/user` | Get current user (SSO); returns `{ username, email, sessionKey }`. |
 | GET | `/auth/friends` | Cached friends list; returns `{ friends, lastUpdated, count }`. |
 | GET | `/auth/games` | Cached games list (from profile My Games Played); returns `{ games, lastUpdated, count }`. Same data as profile.gamesPlayed. |
-| GET | `/auth/profile` | Cached profile; returns `{ isOnline, status, game, timeOnline, gamesPlayed, lastUpdated, count }`. |
+| GET | `/auth/profile` | Cached profile; returns `{ isOnline, status, game, timeOnline, psoServer, nameplate?, gamesPlayed, lastUpdated, count }`. |
+| GET | `/auth/messages` | Cached messages list; returns `{ messages: [{ id?, from, type, game?, sentAt? }, ...], lastUpdated, count }`. |
 | POST | `/auth/refresh/friends` | Refresh friends from Insignia; returns `{ success, friends, count, lastUpdated }`. |
 | POST | `/auth/refresh/games` | Refresh profile and return games; returns `{ success, games, count, lastUpdated }`. |
-| POST | `/auth/refresh/profile` | Refresh profile from Insignia; returns `{ success, isOnline, status, game, timeOnline, gamesPlayed, count, lastUpdated }`. |
+| POST | `/auth/refresh/profile` | Refresh profile from Insignia; returns `{ success, isOnline, status, game, timeOnline, psoServer, gamesPlayed, count, lastUpdated }`. |
+| POST | `/auth/refresh/messages` | Refresh messages from Insignia; returns `{ success, messages, count, lastUpdated }`. |
+| POST | `/auth/messages/view` | Get message detail (subject, sender, sentAt, messageText); body `{ messageId, refresh? }`. Cached server-side; pass `refresh: true` to bypass cache. |
+| POST | `/auth/messages/delete` | Delete a message; body `{ messageId }`. |
+| POST | `/auth/messages/clear-cache` | Clear messages list and message detail cache for current user; next load is fresh. |
+| POST | `/auth/profile/nameplate` | Set Halo 2 nameplate; body `{ nameplate: 'no_nameplate' \| 'bungienet' }`; returns `{ success, nameplate }`. |
+| POST | `/auth/profile/pso-server` | Set PSO Server; body `{ serverId: '1' \| '2' \| '4' }`; returns `{ success, serverId }`. |
 
-**After login:** Friends and profile (including games) are extracted in the background. Allow 20–40 seconds before cached data is full, or call a refresh endpoint.
+**After login:** Friends, profile (including games), and messages are extracted in the background. Allow 20–40 seconds before cached data is full, or call a refresh endpoint.
 
 ## Using Session Key with Protected Endpoints
 
@@ -358,19 +462,29 @@ const response = await fetch('https://your-api.com/protected-endpoint', {
 
 ## Data: Cached (GET) vs Refresh (POST)
 
-- **Cached (no Insignia login):** `getFriends()`, `getGames()`, and `getProfile()` read from the server’s cache. Use these for frequent polling (e.g. every minute).
-- **Refresh (updates cache):** `refreshFriends()`, `refreshGames()`, and `refreshProfile()` fetch fresh data from insignia.live. The backend reuses the Insignia session when possible, so refresh does not always require a full login. Note: `refreshGames()` refreshes the profile page and returns the games list (same source as `getProfile().gamesPlayed`).
+- **Cached (no Insignia login):** `getFriends()`, `getGames()`, `getProfile()`, and `getMessages()` read from the server’s cache. Use these for frequent polling (e.g. every minute). **Message details** from `viewMessage(messageId)` are also cached server-side after the first view.
+- **Refresh (updates cache):** `refreshFriends()`, `refreshGames()`, `refreshProfile()`, and `refreshMessages()` fetch fresh data from insignia.live. The backend reuses the Insignia session when possible. Note: `refreshGames()` refreshes the profile page and returns the games list (same source as `getProfile().gamesPlayed`).
+- **Clear then refresh:** `clearMessageCache()` clears the messages list and all message details for your user; then call `refreshMessages()` to load fresh data from Insignia.
 
 ```javascript
-// Read cached data (fast, no login)
+// Read cached data (fast)
 const friends = await auth.getFriends();
 const profile = await auth.getProfile();
 const games = await auth.getGames();
+const messages = await auth.getMessages();
+
+// View a message (cached after first view; pass { refresh: true } to refetch)
+const detail = await auth.viewMessage('5');
 
 // Update the cache from Insignia (call less often, e.g. every 5–10 min)
 await auth.refreshFriends();
 await auth.refreshProfile();
 await auth.refreshGames();
+await auth.refreshMessages();
+
+// Clear messages cache and reload
+await auth.clearMessageCache();
+await auth.refreshMessages();
 ```
 
 **Polling:** For live presence (who’s online, what game, last seen), poll `getFriends()` and `getProfile()` on a timer (e.g. every minute). Call `refreshFriends()` / `refreshProfile()` periodically or on user action to keep the cache up to date.

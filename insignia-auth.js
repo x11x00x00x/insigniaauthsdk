@@ -1,11 +1,12 @@
 /**
  * Insignia Auth SDK
- * Client-side SDK for the Insignia Auth Backend (session, friends, games, profile).
+ * Client-side SDK for the Insignia Auth Backend (session, friends, games, profile, messages).
  *
  * Endpoints used:
  *   POST /auth/login, POST /auth/logout, POST /auth/verify
- *   GET  /auth/user, GET /auth/friends, GET /auth/games, GET /auth/profile
- *   POST /auth/refresh/friends, POST /auth/refresh/games, POST /auth/refresh/profile
+ *   GET  /auth/user, GET /auth/friends, GET /auth/games, GET /auth/profile, GET /auth/messages
+ *   POST /auth/refresh/friends, POST /auth/refresh/games, POST /auth/refresh/profile, POST /auth/refresh/messages
+ *   POST /auth/messages/view (message detail; cached after first fetch), POST /auth/messages/delete
  *
  * Deprecated (no longer available): mutes — use profile and friends for presence instead.
  *
@@ -13,7 +14,8 @@
  *   const auth = new InsigniaAuth({ apiUrl: 'https://your-server.com/api' });
  *   await auth.login(email, password);
  *   const friends = await auth.getFriends();
- *   const profile = await auth.getProfile();
+ *   const messages = await auth.getMessages();
+ *   const detail = await auth.viewMessage('1');
  */
 
 class InsigniaAuth {
@@ -320,6 +322,48 @@ class InsigniaAuth {
     }
 
     /**
+     * Get user's messages (cached): From, Type (e.g. Friend Request), Game, Sent.
+     * Use refreshMessages() to update from Insignia. More message types may be added later.
+     * @returns {Promise<{ messages: Array<{id?, from, type, game?, sentAt?}>, lastUpdated: number|null, count: number }|null>}
+     */
+    async getMessages() {
+        if (!this.sessionKey) {
+            return null;
+        }
+
+        const isValid = await this.verifySession();
+        if (!isValid) {
+            return null;
+        }
+
+        try {
+            const response = await fetch(`${this.apiUrl}/auth/messages`, {
+                method: 'GET',
+                headers: {
+                    'X-Session-Key': this.sessionKey
+                }
+            });
+
+            if (!response.ok) {
+                if (response.status === 401) {
+                    this.clearSession();
+                }
+                return null;
+            }
+
+            const data = await response.json();
+            return {
+                messages: data.messages || [],
+                lastUpdated: data.lastUpdated || null,
+                count: data.count || 0
+            };
+        } catch (err) {
+            console.error('Error getting messages:', err);
+            return null;
+        }
+    }
+
+    /**
      * Get current user's profile (cached): online status and last games played.
      * Use refreshProfile() to update from Insignia.
      * @returns {Promise<{ isOnline: boolean, gamesPlayed: Array<{title, lastPlayed, iconUrl}>, lastUpdated: number|null, count: number }|null>}
@@ -355,6 +399,8 @@ class InsigniaAuth {
                 status: data.status ?? (data.isOnline ? 'Online' : 'Offline'),
                 game: data.game ?? null,
                 timeOnline: data.timeOnline ?? null,
+                psoServer: data.psoServer ?? null,
+                nameplate: data.nameplate ?? null,
                 gamesPlayed: data.gamesPlayed || [],
                 lastUpdated: data.lastUpdated || null,
                 count: data.count || 0
@@ -406,6 +452,176 @@ class InsigniaAuth {
             console.error('Error refreshing friends:', err);
             throw err;
         }
+    }
+
+    /**
+     * Refresh messages data from Insignia (reuses session when possible).
+     * @returns {Promise<{ messages, lastUpdated, count }|null>} Updated messages or null if not logged in
+     */
+    async refreshMessages() {
+        if (!this.sessionKey) {
+            return null;
+        }
+
+        const isValid = await this.verifySession();
+        if (!isValid) {
+            return null;
+        }
+
+        try {
+            const response = await fetch(`${this.apiUrl}/auth/refresh/messages`, {
+                method: 'POST',
+                headers: {
+                    'X-Session-Key': this.sessionKey
+                }
+            });
+
+            if (!response.ok) {
+                if (response.status === 401) {
+                    this.clearSession();
+                }
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to refresh messages');
+            }
+
+            const data = await response.json();
+            return {
+                messages: data.messages || [],
+                lastUpdated: data.lastUpdated || null,
+                count: data.count || 0
+            };
+        } catch (err) {
+            console.error('Error refreshing messages:', err);
+            throw err;
+        }
+    }
+
+    /**
+     * Clear all messages data and message detail cache for the current user. Call refreshMessages() after this to load messages fresh from Insignia.
+     * @returns {Promise<{ success: true, message: string }|null>} Success or null if not logged in; throws on 5xx.
+     */
+    async clearMessageCache() {
+        if (!this.sessionKey) {
+            return null;
+        }
+
+        const isValid = await this.verifySession();
+        if (!isValid) {
+            return null;
+        }
+
+        const response = await fetch(`${this.apiUrl}/auth/messages/clear-cache`, {
+            method: 'POST',
+            headers: {
+                'X-Session-Key': this.sessionKey
+            }
+        });
+
+        if (!response.ok) {
+            if (response.status === 401) {
+                this.clearSession();
+            }
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to clear message cache');
+        }
+
+        return response.json();
+    }
+
+    /**
+     * Get more information about a message by opening its "View" panel (clicks View, scrapes modal content).
+     * @param {string} messageId - Message row id (e.g. "1" from getMessages().messages[].id).
+     * @param {{ refresh?: boolean, skipCache?: boolean }} [options] - Pass { refresh: true } to bypass cache and force a fresh scrape (use when details are empty on deployed server).
+     * @returns {Promise<{ success, id, title?, subject?, sender?, sentAt?, messageText?, hasVoiceMessage?, type?, raw? }|null>} Detail content or null if not logged in; throws on 404/5xx. When list type is "Unknown", viewMessage may return hasVoiceMessage: true and type: "Voice Message".
+     */
+    async viewMessage(messageId, options) {
+        if (!this.sessionKey) {
+            return null;
+        }
+
+        const isValid = await this.verifySession();
+        if (!isValid) {
+            return null;
+        }
+
+        const opts = options && typeof options === 'object' ? options : {};
+        const refresh = opts.refresh === true || opts.skipCache === true;
+        const response = await fetch(`${this.apiUrl}/auth/messages/view`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Session-Key': this.sessionKey
+            },
+            body: JSON.stringify({ messageId: String(messageId), refresh: refresh || undefined })
+        });
+
+        if (response.status === 404) {
+            const data = await response.json();
+            throw new Error(data.error || 'Message not found');
+        }
+
+        if (!response.ok) {
+            if (response.status === 401) {
+                this.clearSession();
+            }
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to get message detail');
+        }
+
+        const data = await response.json();
+        return {
+            success: data.success,
+            id: data.id,
+            title: data.title ?? null,
+            subject: data.subject ?? null,
+            sender: data.sender ?? null,
+            sentAt: data.sentAt ?? null,
+            messageText: data.messageText ?? null,
+            hasVoiceMessage: data.hasVoiceMessage === true,
+            type: data.type ?? null,
+            raw: data.raw ?? null
+        };
+    }
+
+    /**
+     * Delete a message (clicks Delete in the dashboard, confirms modal if present). Available for message types that show Delete (e.g. Game Invite).
+     * @param {string} messageId - Message row id (e.g. "1" from getMessages().messages[].id).
+     * @returns {Promise<{ success: true, message: string }|null>} Success or null if not logged in; throws on 404/5xx.
+     */
+    async deleteMessage(messageId) {
+        if (!this.sessionKey) {
+            return null;
+        }
+
+        const isValid = await this.verifySession();
+        if (!isValid) {
+            return null;
+        }
+
+        const response = await fetch(`${this.apiUrl}/auth/messages/delete`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Session-Key': this.sessionKey
+            },
+            body: JSON.stringify({ messageId: String(messageId) })
+        });
+
+        if (response.status === 404) {
+            const data = await response.json();
+            throw new Error(data.error || 'Message not found or cannot be deleted');
+        }
+
+        if (!response.ok) {
+            if (response.status === 401) {
+                this.clearSession();
+            }
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to delete message');
+        }
+
+        const data = await response.json();
+        return { success: data.success, message: data.message || 'Message deleted' };
     }
 
     /**
@@ -487,12 +703,83 @@ class InsigniaAuth {
                 status: data.status ?? (data.isOnline ? 'Online' : 'Offline'),
                 game: data.game ?? null,
                 timeOnline: data.timeOnline ?? null,
+                psoServer: data.psoServer ?? null,
+                nameplate: data.nameplate ?? null,
                 gamesPlayed: data.gamesPlayed || [],
                 lastUpdated: data.lastUpdated || null,
                 count: data.count || 0
             };
         } catch (err) {
             console.error('Error refreshing profile:', err);
+            throw err;
+        }
+    }
+
+    /**
+     * Set PSO Server on Insignia profile. Opens the Set PSO Server modal and submits.
+     * @param {string|number} serverId - '1' (Schthack), '2' (Sylverant), or '4' (Ragol.org)
+     * @returns {Promise<{ success, serverId }|null>}
+     */
+    async setProfilePsoServer(serverId) {
+        if (!this.sessionKey) return null;
+        const isValid = await this.verifySession();
+        if (!isValid) return null;
+        const id = serverId != null ? String(serverId) : '';
+        if (!['1', '2', '4'].includes(id)) {
+            throw new Error('Invalid serverId. Use 1 (Schthack), 2 (Sylverant), or 4 (Ragol.org).');
+        }
+        try {
+            const response = await fetch(`${this.apiUrl}/auth/profile/pso-server`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Session-Key': this.sessionKey
+                },
+                body: JSON.stringify({ serverId: id })
+            });
+            if (!response.ok) {
+                if (response.status === 401) this.clearSession();
+                const err = await response.json();
+                throw new Error(err.error || 'Failed to set PSO server');
+            }
+            const data = await response.json();
+            return { success: data.success, serverId: data.serverId };
+        } catch (err) {
+            console.error('Error setting PSO server:', err);
+            throw err;
+        }
+    }
+
+    /**
+     * Set Halo 2 nameplate on Insignia profile (no_nameplate | bungienet).
+     * @param {string} nameplate - 'no_nameplate' or 'bungienet'
+     * @returns {Promise<{ success, nameplate }|null>}
+     */
+    async setProfileNameplate(nameplate) {
+        if (!this.sessionKey) return null;
+        const isValid = await this.verifySession();
+        if (!isValid) return null;
+        if (!nameplate || !['no_nameplate', 'bungienet'].includes(nameplate)) {
+            throw new Error('Invalid nameplate. Use no_nameplate or bungienet.');
+        }
+        try {
+            const response = await fetch(`${this.apiUrl}/auth/profile/nameplate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Session-Key': this.sessionKey
+                },
+                body: JSON.stringify({ nameplate })
+            });
+            if (!response.ok) {
+                if (response.status === 401) this.clearSession();
+                const err = await response.json();
+                throw new Error(err.error || 'Failed to set nameplate');
+            }
+            const data = await response.json();
+            return { success: data.success, nameplate: data.nameplate };
+        } catch (err) {
+            console.error('Error setting nameplate:', err);
             throw err;
         }
     }

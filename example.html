@@ -65,6 +65,12 @@
             border-radius: 4px;
             font-size: 14px;
         }
+        .config-hint {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #666;
+        }
+        .config-hint code { background: #eee; padding: 2px 6px; border-radius: 4px; }
 
         .login-form {
             display: none;
@@ -273,6 +279,33 @@
             color: #2e7d32;
             margin-top: 6px;
         }
+        .profile-option-row {
+            margin-top: 12px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .profile-option-row label { margin: 0; font-weight: 500; color: #555; }
+        .profile-option-row select {
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .profile-option-row .set-opt-btn {
+            width: auto;
+            padding: 6px 12px;
+            font-size: 13px;
+            background: #1976d2;
+        }
+        .profile-option-row .set-opt-btn:hover { background: #1565c0; }
+        .profile-option-row .set-opt-btn:disabled { background: #9e9e9e; cursor: wait; }
+        .profile-feedback { font-size: 13px; margin-left: 4px; }
+        .profile-feedback.saving { color: #666; }
+        .profile-feedback.success { color: #2e7d32; font-weight: 500; }
+        .profile-feedback.error { color: #c62828; }
         .data-item.online {
             border-left: 3px solid #4caf50;
         }
@@ -305,6 +338,57 @@
         .data-item.game-row .game-text {
             min-width: 0;
         }
+        .data-item.message-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .data-item.message-row .message-meta {
+            flex: 1;
+            min-width: 0;
+        }
+        .message-actions {
+            display: flex;
+            gap: 6px;
+        }
+        .message-actions button {
+            width: auto;
+            padding: 6px 12px;
+            font-size: 13px;
+        }
+        .message-actions .view-msg-btn { background: #1976d2; }
+        .message-actions .view-msg-btn:hover { background: #1565c0; }
+        .message-actions .delete-msg-btn { background: #d32f2f; }
+        .message-actions .delete-msg-btn:hover { background: #b71c1c; }
+        .msg-detail-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .msg-detail-modal.show { display: flex; }
+        .msg-detail-content {
+            background: white;
+            border-radius: 8px;
+            max-width: 480px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+        .msg-detail-content h4 { margin-bottom: 12px; color: #333; }
+        .msg-detail-content .detail-row { margin-bottom: 10px; font-size: 14px; }
+        .msg-detail-content .detail-row strong { display: inline-block; min-width: 80px; }
+        .msg-detail-content .detail-empty-hint { font-size: 13px; color: #666; margin: 0; }
+        .msg-detail-content .detail-empty-hint code { background: #eee; padding: 2px 6px; border-radius: 4px; }
+        .msg-detail-close { margin-top: 16px; width: auto; }
     </style>
 </head>
 <body>
@@ -314,7 +398,8 @@
         
         <div class="config-section">
             <label for="apiUrl">API Server URL:</label>
-            <input type="text" id="apiUrl" placeholder="https://your-server.com/api" value="https://auth.insigniastats.live/api">
+            <input type="text" id="apiUrl" placeholder="https://your-server.com/api" value="">
+            <p class="config-hint">When testing locally, open this page from your server (e.g. <code>http://localhost:3010/sdk/example.html</code>) so the API URL matches and View message works.</p>
         </div>
         
         <div id="loginForm" class="login-form active">
@@ -352,6 +437,29 @@
                 <h3>My profile</h3>
                 <div id="profileStatus" class="profile-status">—</div>
                 <div id="profilePlaying" class="profile-playing" style="display: none;"></div>
+                <div class="profile-option-row">
+                    <span><strong>PSO Server:</strong></span>
+                    <span id="profilePsoDisplay">—</span>
+                    <select id="profilePsoSelect">
+                        <option value="">—</option>
+                        <option value="1">Schthack</option>
+                        <option value="2">Sylverant</option>
+                        <option value="4">Ragol.org</option>
+                    </select>
+                    <button type="button" class="set-opt-btn" id="setPsoBtn" onclick="setPsoServer()">Set PSO</button>
+                    <span id="profilePsoFeedback" class="profile-feedback"></span>
+                </div>
+                <div class="profile-option-row">
+                    <span><strong>Halo 2 nameplate:</strong></span>
+                    <span id="profileNameplateDisplay">—</span>
+                    <select id="profileNameplateSelect">
+                        <option value="">—</option>
+                        <option value="no_nameplate">No nameplate</option>
+                        <option value="bungienet">Bungie.net</option>
+                    </select>
+                    <button type="button" class="set-opt-btn" id="setNameplateBtn" onclick="setNameplate()">Set nameplate</button>
+                    <span id="profileNameplateFeedback" class="profile-feedback"></span>
+                </div>
                 <button class="refresh-btn" onclick="refreshProfile()" id="refreshProfileBtn">Refresh profile</button>
             </div>
             
@@ -366,14 +474,41 @@
                 <button class="refresh-btn" onclick="refreshGames()" id="refreshGamesBtn">Refresh games</button>
                 <div class="data-list" id="gamesList">Loading...</div>
             </div>
+
+            <div class="data-section messages-section">
+                <h3>Messages <span class="count-badge" id="messagesCount">-</span></h3>
+                <button class="refresh-btn" onclick="refreshMessages()" id="refreshMessagesBtn">Refresh messages</button>
+                <button class="refresh-btn" onclick="clearMessageCacheAndReload()" id="clearMessageCacheBtn" title="Delete all cached messages for your user, then load fresh from Insignia">Delete message cache</button>
+                <span id="messagesFeedback" class="profile-feedback"></span>
+                <div class="data-list" id="messagesList">Loading...</div>
+            </div>
             
             <button class="logout-btn" onclick="handleLogout()">Logout</button>
+        </div>
+    </div>
+
+    <div id="msgDetailModal" class="msg-detail-modal" onclick="if (event.target === this) closeMessageDetail()">
+        <div class="msg-detail-content" onclick="event.stopPropagation()">
+            <h4 id="msgDetailTitle">Message details</h4>
+            <div id="msgDetailBody"></div>
+            <button class="msg-detail-close refresh-btn" onclick="closeMessageDetail()">Close</button>
         </div>
     </div>
 
     <script src="insignia-auth.js"></script>
     <script>
         let auth = null;
+
+        // Default API URL: same-origin when served from this server (so View message works); else production
+        (function setDefaultApiUrl() {
+            const el = document.getElementById('apiUrl');
+            if (!el || el.value.trim()) return;
+            const o = window.location.origin;
+            if (o && (o.startsWith('http://') || o.startsWith('https://')))
+                el.value = o + '/api';
+            else
+                el.value = 'https://auth.insigniastats.live/api';
+        })();
 
         // Initialize SDK
         function initAuth() {
@@ -403,6 +538,19 @@
 
             // Check initial state
             updateUI();
+
+            // Delegate clicks on message list so View/Delete always work (avoids inline onclick issues)
+            const messagesListEl = document.getElementById('messagesList');
+            if (messagesListEl) {
+                messagesListEl.addEventListener('click', (e) => {
+                    const viewBtn = e.target.closest('.view-msg-btn');
+                    const deleteBtn = e.target.closest('.delete-msg-btn');
+                    const row = e.target.closest('.message-row');
+                    const id = row && row.getAttribute('data-message-id');
+                    if (viewBtn && id) viewMessage(id);
+                    else if (deleteBtn && id) deleteMessage(id);
+                });
+            }
         }
 
         // Update UI based on login status. opts.waitForData = true after login so we wait for backend extraction.
@@ -442,9 +590,11 @@
             const hintEl = document.getElementById('serverHint');
             hintEl.style.display = 'none';
 
+            const messagesList = document.getElementById('messagesList');
             const setLoading = (msg) => {
                 friendsList.textContent = msg;
                 gamesList.textContent = msg;
+                if (messagesList) messagesList.textContent = msg;
             };
 
             setLoading('Loading your data… (may take up to 20 seconds)');
@@ -453,20 +603,22 @@
             let profile = await auth.getProfile();
             let friends = await auth.getFriends();
             let games = await auth.getGames();
+            let messages = await auth.getMessages();
 
-            const hasAny = (profile && (profile.gamesPlayed?.length || profile.isOnline !== undefined)) || (friends && (friends.friends?.length || friends.count > 0)) || (games && (games.games?.length || games.count > 0));
+            const hasAny = (profile && (profile.gamesPlayed?.length || profile.isOnline !== undefined)) || (friends && (friends.friends?.length || friends.count > 0)) || (games && (games.games?.length || games.count > 0)) || (messages && (messages.messages?.length || messages.count > 0));
             if (!hasAny) {
                 setLoading('Still loading… retrying in 12 seconds.');
                 await new Promise(r => setTimeout(r, RETRY_WAIT_MS));
                 profile = await auth.getProfile();
                 friends = await auth.getFriends();
                 games = await auth.getGames();
+                messages = await auth.getMessages();
             }
 
-            paintData(profile, friends, games, hintEl);
+            paintData(profile, friends, games, messages, hintEl);
         }
 
-        function paintData(profile, friends, games, hintEl) {
+        function paintData(profile, friends, games, messages, hintEl) {
             hintEl = hintEl || document.getElementById('serverHint');
             hintEl.style.display = 'none';
             hintEl.textContent = '';
@@ -476,6 +628,10 @@
             } else {
                 document.getElementById('profileStatus').textContent = 'Unknown';
                 document.getElementById('profilePlaying').style.display = 'none';
+                const psoD = document.getElementById('profilePsoDisplay');
+                const nameplateD = document.getElementById('profileNameplateDisplay');
+                if (psoD) psoD.textContent = '—';
+                if (nameplateD) nameplateD.textContent = '—';
             }
             if (friends) {
                 displayFriends(friends);
@@ -487,7 +643,13 @@
                 ? games
                 : { games: profile?.gamesPlayed || [], count: (profile?.gamesPlayed || []).length };
             displayGames(gamesToShow);
-            if (!profile && !friends && !games) {
+            if (messages) {
+                displayMessages(messages);
+            } else {
+                const el = document.getElementById('messagesList');
+                if (el) el.textContent = 'No messages data available';
+            }
+            if (!profile && !friends && !games && !messages) {
                 hintEl.innerHTML = 'No data loaded. The server may still be extracting. Click Refresh profile / Refresh to try again, or check the API URL and backend.';
                 hintEl.style.display = 'block';
             }
@@ -503,17 +665,29 @@
                 const profile = await auth.getProfile();
                 const friends = await auth.getFriends();
                 const games = await auth.getGames();
-                paintData(profile, friends, games, hintEl);
+                const messages = await auth.getMessages();
+                paintData(profile, friends, games, messages, hintEl);
             } catch (err) {
                 console.error('Error loading data:', err);
                 document.getElementById('gamesList').textContent = 'Error: ' + (err.message || 'Failed to load');
             }
         }
 
-        // Display profile (status + playing game + time online only; games list is at bottom)
+        function nameplateLabel(value) {
+            if (!value) return '—';
+            if (value === 'no_nameplate') return 'No nameplate';
+            if (value === 'bungienet') return 'Bungie.net';
+            return value;
+        }
+
+        // Display profile (status, playing game, PSO Server, Halo 2 nameplate; games list is at bottom)
         function displayProfile(data) {
             const statusEl = document.getElementById('profileStatus');
             const playingEl = document.getElementById('profilePlaying');
+            const psoDisplay = document.getElementById('profilePsoDisplay');
+            const nameplateDisplay = document.getElementById('profileNameplateDisplay');
+            const psoSelect = document.getElementById('profilePsoSelect');
+            const nameplateSelect = document.getElementById('profileNameplateSelect');
 
             statusEl.className = 'profile-status ' + (data.isOnline ? 'online' : 'offline');
             const statusLabel = (data.status || (data.isOnline ? 'Online' : 'Offline')).trim();
@@ -529,6 +703,15 @@
                 playingEl.style.display = 'none';
                 playingEl.textContent = '';
             }
+
+            if (psoDisplay) psoDisplay.textContent = (data.psoServer && data.psoServer.trim()) ? escapeHtml(data.psoServer) : 'Not Set';
+            if (nameplateDisplay) nameplateDisplay.textContent = nameplateLabel(data.nameplate);
+            if (psoSelect && data.psoServer) {
+                const map = { 'Schthack': '1', 'Sylverant': '2', 'Ragol.org': '4' };
+                const serverId = map[data.psoServer] || '';
+                if (psoSelect.querySelector('option[value="' + serverId + '"]')) psoSelect.value = serverId;
+            }
+            if (nameplateSelect && data.nameplate) nameplateSelect.value = data.nameplate || '';
         }
 
         // Display friends: always show Online/Offline and either game or last seen
@@ -584,6 +767,234 @@
                 }).join('');
             } else {
                 list.textContent = 'No games played yet';
+            }
+        }
+
+        // Resolved types for messages that show "Unknown" in list (filled by fetching message details)
+        let messageResolvedTypes = {};
+
+        // Display messages (from, type, game, sentAt; View / Delete per message). Optionally pass resolvedTypes to show Text Message / Voice Message for Unknown.
+        function displayMessages(data, resolvedTypes) {
+            const list = document.getElementById('messagesList');
+            const countEl = document.getElementById('messagesCount');
+            if (!list) return;
+            if (countEl) countEl.textContent = data.count ?? (data.messages ? data.messages.length : 0);
+            const types = resolvedTypes || messageResolvedTypes;
+            if (data.messages && data.messages.length > 0) {
+                list.innerHTML = data.messages.map(msg => {
+                    const id = (msg.id != null && msg.id !== undefined) ? String(msg.id) : '';
+                    const displayType = (types[id] || msg.type || 'Unknown').trim();
+                    const from = escapeHtml((msg.from || '').trim());
+                    const type = escapeHtml(displayType);
+                    const game = escapeHtml((msg.game || '').trim());
+                    const sentAt = escapeHtml((msg.sentAt || '').trim());
+                    const hasId = id !== '';
+                    const viewBtn = hasId ? '<button class="view-msg-btn" type="button" data-message-id="' + escapeHtml(id) + '">View</button>' : '';
+                    const deleteBtn = hasId ? '<button class="delete-msg-btn" type="button" data-message-id="' + escapeHtml(id) + '">Delete</button>' : '';
+                    const actions = (viewBtn || deleteBtn) ? '<div class="message-actions">' + viewBtn + deleteBtn + '</div>' : '';
+                    return '<div class="data-item message-row" data-message-id="' + escapeHtml(id) + '"><div class="message-meta"><strong>' + from + '</strong> · ' + type + (game ? ' · ' + game : '') + (sentAt ? ' · ' + sentAt : '') + '</div>' + actions + '</div>';
+                }).join('');
+                // For any message with type Unknown and an id, fetch detail to resolve type (Text Message / Voice Message)
+                (async () => {
+                    const unknowns = data.messages.filter(m => (m.type || '').trim() === 'Unknown' && (m.id != null && m.id !== ''));
+                    if (unknowns.length === 0) return;
+                    for (const msg of unknowns) {
+                        const id = String(msg.id);
+                        if (messageResolvedTypes[id]) continue; // already resolved
+                        try {
+                            const detail = await auth.viewMessage(id);
+                            if (detail && detail.type) {
+                                messageResolvedTypes[id] = detail.type;
+                                displayMessages(data, messageResolvedTypes);
+                            }
+                        } catch (e) { /* ignore per-message errors */ }
+                    }
+                })();
+            } else {
+                list.textContent = 'No messages';
+            }
+        }
+
+        function closeMessageDetail() {
+            document.getElementById('msgDetailModal').classList.remove('show');
+        }
+
+        async function retryViewDetail(messageId) {
+            const body = document.getElementById('msgDetailBody');
+            const titleEl = document.getElementById('msgDetailTitle');
+            if (!auth || !auth.isLoggedIn()) return;
+            body.textContent = 'Refreshing messages list, then loading details…';
+            try {
+                await auth.refreshMessages();
+                const messagesData = await auth.getMessages();
+                if (messagesData && messagesData.messages) displayMessages(messagesData, messageResolvedTypes);
+                body.textContent = 'Loading details…';
+                const detail = await auth.viewMessage(messageId, { refresh: true });
+                if (detail && !detail.error) {
+                    titleEl.textContent = detail.title || 'Message details';
+                    const hasAny = (detail.subject != null && String(detail.subject).trim() !== '') ||
+                        (detail.sender != null && String(detail.sender).trim() !== '') ||
+                        (detail.sentAt != null && String(detail.sentAt).trim() !== '') ||
+                        (detail.messageText != null && String(detail.messageText).trim() !== '');
+                    if (!hasAny) {
+                        body.innerHTML = '<p class="detail-empty-hint">Still no details. The server may need to be updated or the message page may load differently in production.</p><button type="button" class="refresh-btn msg-detail-close" onclick="retryViewDetail(\'' + escapeHtml(String(messageId)) + '\')">Retry again</button>';
+                    } else {
+                        const parts = [];
+                        parts.push('<div class="detail-row"><strong>Subject:</strong> ' + escapeHtml(detail.subject != null ? String(detail.subject) : '') + '</div>');
+                        parts.push('<div class="detail-row"><strong>Sender:</strong> ' + escapeHtml(detail.sender != null ? String(detail.sender) : '') + '</div>');
+                        parts.push('<div class="detail-row"><strong>Sent at:</strong> ' + escapeHtml(detail.sentAt != null ? String(detail.sentAt) : '') + '</div>');
+                        parts.push('<div class="detail-row"><strong>Type:</strong> ' + escapeHtml(detail.type != null ? String(detail.type) : 'Unknown') + '</div>');
+                        if (detail.hasVoiceMessage) parts.push('<div class="detail-row"><strong>Message:</strong> <em>Voice message</em></div>');
+                        else if (detail.messageText != null && String(detail.messageText).trim() !== '') parts.push('<div class="detail-row"><strong>Message:</strong> ' + escapeHtml(detail.messageText) + '</div>');
+                        else if (detail.messageText != null) parts.push('<div class="detail-row"><strong>Message:</strong> <em>(no text)</em></div>');
+                        body.innerHTML = parts.join('');
+                        if (detail.type && messageId) {
+                            messageResolvedTypes[String(messageId)] = detail.type;
+                            try {
+                                const messagesData = await auth.getMessages();
+                                if (messagesData && messagesData.messages) displayMessages(messagesData, messageResolvedTypes);
+                            } catch (e) {}
+                        }
+                    }
+                } else {
+                    body.textContent = detail && detail.error ? detail.error : 'Message not found or deleted';
+                }
+            } catch (err) {
+                body.textContent = 'Error: ' + (err.message || 'Failed to load');
+            }
+        }
+
+        async function viewMessage(messageId) {
+            if (!auth || !auth.isLoggedIn()) return;
+            const modal = document.getElementById('msgDetailModal');
+            const body = document.getElementById('msgDetailBody');
+            const titleEl = document.getElementById('msgDetailTitle');
+            body.textContent = 'Loading…';
+            modal.classList.add('show');
+            try {
+                const detail = await auth.viewMessage(messageId);
+                if (detail && !detail.error) {
+                    titleEl.textContent = detail.title || 'Message details';
+                    const hasAny = (detail.subject != null && String(detail.subject).trim() !== '') ||
+                        (detail.sender != null && String(detail.sender).trim() !== '') ||
+                        (detail.sentAt != null && String(detail.sentAt).trim() !== '') ||
+                        (detail.messageText != null && String(detail.messageText).trim() !== '');
+                    if (!hasAny) {
+                        body.innerHTML = '<p class="detail-empty-hint">No details returned. This can happen if the server has cached empty data or the scrape failed (e.g. on a different server environment).</p><button type="button" class="refresh-btn msg-detail-close" onclick="retryViewDetail(\'' + escapeHtml(String(messageId)) + '\')">Retry (bypass cache)</button>';
+                    } else {
+                        const parts = [];
+                        parts.push('<div class="detail-row"><strong>Subject:</strong> ' + escapeHtml(detail.subject != null ? String(detail.subject) : '') + '</div>');
+                        parts.push('<div class="detail-row"><strong>Sender:</strong> ' + escapeHtml(detail.sender != null ? String(detail.sender) : '') + '</div>');
+                        parts.push('<div class="detail-row"><strong>Sent at:</strong> ' + escapeHtml(detail.sentAt != null ? String(detail.sentAt) : '') + '</div>');
+                        parts.push('<div class="detail-row"><strong>Type:</strong> ' + escapeHtml(detail.type != null ? String(detail.type) : 'Unknown') + '</div>');
+                        if (detail.hasVoiceMessage) {
+                            parts.push('<div class="detail-row"><strong>Message:</strong> <em>Voice message</em></div>');
+                        } else if (detail.messageText != null && String(detail.messageText).trim() !== '') {
+                            parts.push('<div class="detail-row"><strong>Message:</strong> ' + escapeHtml(detail.messageText) + '</div>');
+                        } else if (detail.messageText != null) {
+                            parts.push('<div class="detail-row"><strong>Message:</strong> <em>(no text)</em></div>');
+                        }
+                        body.innerHTML = parts.join('');
+                    }
+                    // Update resolved type in list so the row shows Text Message / Voice Message instead of Unknown
+                    if (detail.type && messageId) {
+                        messageResolvedTypes[String(messageId)] = detail.type;
+                        try {
+                            const messagesData = await auth.getMessages();
+                            if (messagesData && messagesData.messages) displayMessages(messagesData, messageResolvedTypes);
+                        } catch (e) {}
+                    }
+                } else {
+                    const errMsg = detail == null
+                        ? 'Session invalid or request failed. Try logging in again and ensure the API URL is correct (use same-origin when testing locally, e.g. http://localhost:3010/sdk/example.html).'
+                        : (detail.error ? detail.error : 'Message not found or deleted');
+                    if (detail != null && (errMsg.indexOf('not on current page') !== -1 || errMsg.indexOf('refreshed with current ids') !== -1)) {
+                        try {
+                            await auth.refreshMessages();
+                            const messagesData = await auth.getMessages();
+                            if (messagesData && messagesData.messages) displayMessages(messagesData, messageResolvedTypes);
+                        } catch (e) {}
+                        body.innerHTML = '<p>' + escapeHtml(errMsg) + '</p><p class="detail-empty-hint">The list below has been updated. Click View on a message to open it.</p>';
+                    } else {
+                        body.textContent = errMsg;
+                    }
+                }
+            } catch (err) {
+                console.error('viewMessage error:', err);
+                body.textContent = 'Error: ' + (err.message || 'Failed to load');
+            }
+        }
+
+        async function deleteMessage(messageId) {
+            if (!auth || !auth.isLoggedIn()) return;
+            if (!confirm('Delete this message?')) return;
+            setFeedback('messagesFeedback', 'Deleting…', 'saving');
+            try {
+                await auth.deleteMessage(messageId);
+                const messages = await auth.getMessages();
+                if (messages) displayMessages(messages);
+                closeMessageDetail();
+                setFeedback('messagesFeedback', 'Message deleted.', 'success');
+                setTimeout(() => setFeedback('messagesFeedback', '', ''), 3000);
+            } catch (err) {
+                setFeedback('messagesFeedback', 'Error: ' + (err.message || 'Failed to delete'), 'error');
+                setTimeout(() => setFeedback('messagesFeedback', '', ''), 5000);
+            }
+        }
+
+        function setFeedback(id, text, className) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.textContent = text;
+            el.className = 'profile-feedback ' + (className || '');
+        }
+
+        async function setPsoServer() {
+            if (!auth || !auth.isLoggedIn()) return;
+            const sel = document.getElementById('profilePsoSelect');
+            const id = (sel && sel.value) ? String(sel.value).trim() : '';
+            if (!id) {
+                setFeedback('profilePsoFeedback', 'Select a server first.', 'error');
+                return;
+            }
+            const btn = document.getElementById('setPsoBtn');
+            const feedbackId = 'profilePsoFeedback';
+            if (btn) btn.disabled = true;
+            setFeedback(feedbackId, 'Saving…', 'saving');
+            try {
+                await auth.setProfilePsoServer(id);
+                setFeedback(feedbackId, 'Saved!', 'success');
+                const profile = await auth.getProfile();
+                if (profile) displayProfile(profile);
+                setTimeout(() => setFeedback(feedbackId, '', ''), 3000);
+            } catch (err) {
+                setFeedback(feedbackId, 'Error: ' + (err.message || 'Failed to set'), 'error');
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        async function setNameplate() {
+            if (!auth || !auth.isLoggedIn()) return;
+            const sel = document.getElementById('profileNameplateSelect');
+            const nameplate = (sel && sel.value) ? String(sel.value).trim() : '';
+            if (!nameplate || !['no_nameplate', 'bungienet'].includes(nameplate)) {
+                setFeedback('profileNameplateFeedback', 'Select an option first.', 'error');
+                return;
+            }
+            const btn = document.getElementById('setNameplateBtn');
+            const feedbackId = 'profileNameplateFeedback';
+            if (btn) btn.disabled = true;
+            setFeedback(feedbackId, 'Saving…', 'saving');
+            try {
+                await auth.setProfileNameplate(nameplate);
+                setFeedback(feedbackId, 'Saved!', 'success');
+                document.getElementById('profileNameplateDisplay').textContent = nameplateLabel(nameplate);
+                setTimeout(() => setFeedback(feedbackId, '', ''), 3000);
+            } catch (err) {
+                setFeedback(feedbackId, 'Error: ' + (err.message || 'Failed to set'), 'error');
+            } finally {
+                if (btn) btn.disabled = false;
             }
         }
 
@@ -655,6 +1066,47 @@
             } catch (err) {
                 list.textContent = `Error: ${err.message}`;
                 btn.textContent = 'Refresh games';
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function refreshMessages() {
+            if (!auth || !auth.isLoggedIn()) return;
+            const btn = document.getElementById('refreshMessagesBtn');
+            const list = document.getElementById('messagesList');
+            btn.disabled = true;
+            btn.textContent = 'Refreshing...';
+            list.textContent = 'Refreshing...';
+            try {
+                const data = await auth.refreshMessages();
+                if (data) displayMessages(data);
+                else list.textContent = 'No data';
+                btn.textContent = 'Refresh messages';
+            } catch (err) {
+                list.textContent = 'Error: ' + (err.message || 'Failed to refresh');
+                btn.textContent = 'Refresh messages';
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function clearMessageCacheAndReload() {
+            if (!auth || !auth.isLoggedIn()) return;
+            const btn = document.getElementById('clearMessageCacheBtn');
+            const list = document.getElementById('messagesList');
+            btn.disabled = true;
+            btn.textContent = 'Clearing...';
+            list.textContent = 'Clearing cache, then loading...';
+            try {
+                await auth.clearMessageCache();
+                const data = await auth.refreshMessages();
+                if (data) displayMessages(data);
+                else list.textContent = 'No messages';
+                btn.textContent = 'Delete message cache';
+            } catch (err) {
+                list.textContent = 'Error: ' + (err.message || 'Failed to clear or load');
+                btn.textContent = 'Delete message cache';
             } finally {
                 btn.disabled = false;
             }
